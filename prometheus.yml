@@ -6,4 +6,4 @@ scrape_configs:
   - job_name: 'velocity-limits'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['localhost:8080'] 
+      - targets: ['app:8080'] 
