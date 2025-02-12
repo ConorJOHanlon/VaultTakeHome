@@ -12,6 +12,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.MDC;
 import io.micrometer.core.annotation.Timed;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import jakarta.annotation.PostConstruct;
 
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
@@ -34,35 +38,87 @@ public class LoadLimitService {
     private int dailyLoadLimit;
 
     private final CustomerLoadRepository loadRepository;
+    private final MeterRegistry meterRegistry;
+
+    private Counter loadAttemptsCounter;
+    private Counter loadAcceptedCounter;
+    private Counter loadRejectedCounter;
+    private Counter duplicateLoadsCounter;
+    private Counter dailyLimitExceededCounter;
+    private Counter weeklyLimitExceededCounter;
+    private Counter dailyCountExceededCounter;
+    private Timer loadProcessingTimer;
+
+    @PostConstruct
+    public void initMetrics() {
+        loadAttemptsCounter = Counter.builder("load.attempts.total")
+            .description("Total number of load attempts")
+            .register(meterRegistry);
+
+        loadAcceptedCounter = Counter.builder("load.accepted.total")
+            .description("Total number of accepted loads")
+            .register(meterRegistry);
+
+        loadRejectedCounter = Counter.builder("load.rejected.total")
+            .description("Total number of rejected loads")
+            .register(meterRegistry);
+
+        duplicateLoadsCounter = Counter.builder("load.duplicates.total")
+            .description("Total number of duplicate load attempts")
+            .register(meterRegistry);
+
+        dailyLimitExceededCounter = Counter.builder("load.daily.limit.exceeded.total")
+            .description("Number of times daily amount limit was exceeded")
+            .register(meterRegistry);
+
+        weeklyLimitExceededCounter = Counter.builder("load.weekly.limit.exceeded.total")
+            .description("Number of times weekly amount limit was exceeded")
+            .register(meterRegistry);
+
+        dailyCountExceededCounter = Counter.builder("load.daily.count.exceeded.total")
+            .description("Number of times daily load count limit was exceeded")
+            .register(meterRegistry);
+
+        loadProcessingTimer = Timer.builder("load.processing.time")
+            .description("Time taken to process load requests")
+            .register(meterRegistry);
+    }
 
     @Timed(value = "load.process.time", description = "Time taken to process load request")
     @Transactional
     public LoadResponse processLoad(LoadRequest request) {
-        try {
-            MDC.put("customerId", request.getCustomerId());
-            MDC.put("loadId", request.getId());
-            
-            log.debug("Processing load request: id={}, customer={}, amount={}, time={}", 
-                request.getId(), request.getCustomerId(), request.getLoadAmount(), request.getTime());
+        return loadProcessingTimer.record(() -> {
+            try {
+                MDC.put("customerId", request.getCustomerId());
+                MDC.put("loadId", request.getId());
+                
+                loadAttemptsCounter.increment();
+                log.debug("Processing load request: id={}, customer={}, amount={}, time={}", 
+                    request.getId(), request.getCustomerId(), request.getLoadAmount(), request.getTime());
 
-            if (loadRepository.existsByLoadIdAndCustomerId(request.getId(), request.getCustomerId())) {
-                return null;
+                if (loadRepository.existsByLoadIdAndCustomerId(request.getId(), request.getCustomerId())) {
+                    duplicateLoadsCounter.increment();
+                    return null;
+                }
+
+                boolean accepted = checkLimits(request);
+                
+                if (accepted) {
+                    loadAcceptedCounter.increment();
+                    saveLoad(request);
+                } else {
+                    loadRejectedCounter.increment();
+                }
+
+                return LoadResponse.builder()
+                        .id(request.getId())
+                        .customerId(request.getCustomerId())
+                        .accepted(accepted)
+                        .build();
+            } finally {
+                MDC.clear();
             }
-
-            boolean accepted = checkLimits(request);
-            
-            if (accepted) {
-                saveLoad(request);
-            }
-
-            return LoadResponse.builder()
-                    .id(request.getId())
-                    .customerId(request.getCustomerId())
-                    .accepted(accepted)
-                    .build();
-        } finally {
-            MDC.clear();
-        }
+        });
     }
 
     private boolean checkLimits(LoadRequest request) {
@@ -85,6 +141,7 @@ public class LoadLimitService {
         long dailyLoadCount = loadRepository.countByCustomerIdAndLoadTimeBetween(
                 request.getCustomerId(), startOfDay, endOfDay);
         if (dailyLoadCount >= dailyLoadLimit) {
+            dailyCountExceededCounter.increment();
             log.debug("Daily load count limit exceeded: customer={}, count={}", 
                 request.getCustomerId(), dailyLoadCount);
             return false;
@@ -95,6 +152,7 @@ public class LoadLimitService {
                 request.getCustomerId(), startOfDay, endOfDay);
         dailyTotal = dailyTotal == null ? BigDecimal.ZERO : dailyTotal;
         if (dailyTotal.add(request.getLoadAmountValue()).compareTo(dailyLimit) > 0) {
+            dailyLimitExceededCounter.increment();
             log.debug("Daily amount limit exceeded: customer={}, current={}, attempted={}", 
                 request.getCustomerId(), dailyTotal, request.getLoadAmount());
             return false;
@@ -104,14 +162,10 @@ public class LoadLimitService {
         BigDecimal weeklyTotal = loadRepository.sumAmountByCustomerIdAndLoadTimeBetween(
                 request.getCustomerId(), startOfWeek, endOfWeek);
         weeklyTotal = weeklyTotal == null ? BigDecimal.ZERO : weeklyTotal;
-        BigDecimal newWeeklyTotal = weeklyTotal.add(request.getLoadAmountValue());
-        
-        log.debug("Weekly total for customer={}: current={}, new={}, limit={}", 
-            request.getCustomerId(), weeklyTotal, newWeeklyTotal, weeklyLimit);
-        
-        if (newWeeklyTotal.compareTo(weeklyLimit) > 0) {
-            log.debug("Weekly amount limit exceeded: customer={}, current={}, attempted={}, would be={}", 
-                request.getCustomerId(), weeklyTotal, request.getLoadAmount(), newWeeklyTotal);
+        if (weeklyTotal.add(request.getLoadAmountValue()).compareTo(weeklyLimit) > 0) {
+            weeklyLimitExceededCounter.increment();
+            log.debug("Weekly amount limit exceeded: customer={}, current={}, attempted={}", 
+                request.getCustomerId(), weeklyTotal, request.getLoadAmount());
             return false;
         }
 
