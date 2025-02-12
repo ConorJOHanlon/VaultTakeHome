@@ -25,7 +25,7 @@ The Velocity Limits Service provides functionality for:
 ```
 
 ## Limits
-Limits are configured in the application.properties file.
+Limits are configured in the `application.properties` file.
 
 ## Setup
 1. Clone the repository
