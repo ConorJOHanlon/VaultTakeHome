@@ -1,0 +1,9 @@
+com\velocity\limits\config\MetricsConfig.class
+com\velocity\limits\model\LoadResponse$LoadResponseBuilder.class
+com\velocity\limits\model\LoadRequest.class
+com\velocity\limits\controller\LoadController.class
+com\velocity\limits\entity\CustomerLoad.class
+com\velocity\limits\repository\CustomerLoadRepository.class
+com\velocity\limits\service\LoadLimitService.class
+com\velocity\limits\model\LoadResponse.class
+com\velocity\limits\VelocityLimitsApplication.class

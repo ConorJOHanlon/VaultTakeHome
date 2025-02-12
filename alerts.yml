@@ -1,0 +1,20 @@
+groups:
+- name: velocity-limits
+  rules:
+  - alert: HighRejectionRate
+    expr: rate(load_rejected_total[5m]) / rate(load_attempts_total[5m]) > 0.5
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: High load rejection rate
+      description: Load rejection rate is above 50% for 5 minutes
+
+  - alert: HighLoadVolume
+    expr: rate(load_requests_total[5m]) > 100
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: High load volume
+      description: More than 100 requests per second for 5 minutes 
