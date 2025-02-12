@@ -1,4 +1,3 @@
-com\velocity\limits\config\MetricsConfig.class
 com\velocity\limits\model\LoadResponse$LoadResponseBuilder.class
 com\velocity\limits\model\LoadRequest.class
 com\velocity\limits\controller\LoadController.class
