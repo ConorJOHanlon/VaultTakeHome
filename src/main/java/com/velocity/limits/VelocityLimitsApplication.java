@@ -29,19 +29,9 @@ public class VelocityLimitsApplication {
     @Bean
     public CommandLineRunner processInputFile(LoadLimitService loadLimitService, ObjectMapper objectMapper) {
         return args -> {
-            // Try Docker path first, then fallback to local path
-            String inputPath = "/input.txt";
+            String inputPath = "src/main/resources/input.txt";
             String outputPath = "/output.txt";
-
-            // If Docker paths don't exist, try local paths
-            if (!Files.exists(Paths.get(inputPath))) {
-                inputPath = "src/main/resources/input.txt";
-                outputPath = "output.txt";
-            }
-
-            logger.info("Using input path: {}", inputPath);
-            logger.info("Using output path: {}", outputPath);
-
+            
             try (BufferedReader reader = new BufferedReader(new FileReader(inputPath));
                  BufferedWriter writer = new BufferedWriter(new FileWriter(outputPath))) {
                 
