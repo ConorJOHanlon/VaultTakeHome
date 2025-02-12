@@ -30,7 +30,10 @@ public class VelocityLimitsApplication {
     public CommandLineRunner processInputFile(LoadLimitService loadLimitService, ObjectMapper objectMapper) {
         return args -> {
             String inputPath = "src/main/resources/input.txt";
-            String outputPath = "src/main/resources/output.txt";
+            String outputPath = "src/main/output/output.txt";
+            
+            // Create output directory if it doesn't exist
+            Files.createDirectories(Paths.get("src/main/output"));
             
             try (BufferedReader reader = new BufferedReader(new FileReader(inputPath));
                  BufferedWriter writer = new BufferedWriter(new FileWriter(outputPath))) {

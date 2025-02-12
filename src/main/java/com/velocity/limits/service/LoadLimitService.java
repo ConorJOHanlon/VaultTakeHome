@@ -48,6 +48,7 @@ public class LoadLimitService {
     private Counter weeklyLimitExceededCounter;
     private Counter dailyCountExceededCounter;
     private Timer loadProcessingTimer;
+    private Counter validationFailuresCounter;
 
     @PostConstruct
     public void initMetrics() {
@@ -82,6 +83,10 @@ public class LoadLimitService {
         loadProcessingTimer = Timer.builder("load.processing.time")
             .description("Time taken to process load requests")
             .register(meterRegistry);
+
+        validationFailuresCounter = Counter.builder("load.validation.failures.total")
+            .description("Number of load requests that failed validation")
+            .register(meterRegistry);
     }
 
     @Timed(value = "load.process.time", description = "Time taken to process load request")
@@ -89,6 +94,8 @@ public class LoadLimitService {
     public LoadResponse processLoad(LoadRequest request) {
         return loadProcessingTimer.record(() -> {
             try {
+                validateRequest(request);
+                
                 MDC.put("customerId", request.getCustomerId());
                 MDC.put("loadId", request.getId());
                 
@@ -121,54 +128,114 @@ public class LoadLimitService {
         });
     }
 
+    private void validateRequest(LoadRequest request) {
+        try {
+            if (request == null) {
+                throw new IllegalArgumentException("Load request cannot be null");
+            }
+            if (request.getId() == null || request.getId().trim().isEmpty()) {
+                throw new IllegalArgumentException("Load ID is required");
+            }
+            if (request.getCustomerId() == null || request.getCustomerId().trim().isEmpty()) {
+                throw new IllegalArgumentException("Customer ID is required");
+            }
+            if (request.getLoadAmountValue() == null) {
+                throw new IllegalArgumentException("Load amount is required");
+            }
+            if (request.getLoadAmountValue().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Load amount must be greater than zero");
+            }
+            if (request.getTime() == null) {
+                throw new IllegalArgumentException("Load time is required");
+            }
+            // Other validation logic can be added here based on the requirements eg. check if the load amount is a valid currency amount
+        } catch (IllegalArgumentException e) {
+            validationFailuresCounter.increment();
+            throw e;
+        }
+    }
+
+    private record TimeWindow(ZonedDateTime start, ZonedDateTime end) {}
+
     private boolean checkLimits(LoadRequest request) {
         ZonedDateTime loadTime = request.getTime();
-        ZonedDateTime startOfDay = loadTime.toLocalDate().atStartOfDay(loadTime.getZone());
-        ZonedDateTime endOfDay = startOfDay.plusDays(1).minusNanos(1);
-        
-        // Get start and end of week (Monday to Sunday)
-        ZonedDateTime startOfWeek = loadTime
-                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-                .truncatedTo(ChronoUnit.DAYS);
-        ZonedDateTime endOfWeek = startOfWeek
-                .plusDays(7)
-                .minusNanos(1);
+        TimeWindow dailyWindow = getDailyTimeWindow(loadTime);
+        TimeWindow weeklyWindow = getWeeklyTimeWindow(loadTime);
 
         log.debug("Checking limits for time={}, startOfWeek={}, endOfWeek={}", 
-            loadTime, startOfWeek, endOfWeek);
+            loadTime, weeklyWindow.start(), weeklyWindow.end());
 
-        // Check daily load count
+        if (!checkDailyLoadCount(request, dailyWindow)) {
+            return false;
+        }
+
+        if (!checkDailyAmountLimit(request, dailyWindow)) {
+            return false;
+        }
+
+        if (!checkWeeklyAmountLimit(request, weeklyWindow)) {
+            return false;
+        }
+
+        return true;
+    }
+
+
+    private TimeWindow getDailyTimeWindow(ZonedDateTime time) {
+        ZonedDateTime startOfDay = time.toLocalDate().atStartOfDay(time.getZone());
+        return new TimeWindow(
+            startOfDay,
+            startOfDay.plusDays(1).minusNanos(1)
+        );
+    }
+
+    private TimeWindow getWeeklyTimeWindow(ZonedDateTime time) {
+        ZonedDateTime startOfWeek = time
+                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                .truncatedTo(ChronoUnit.DAYS);
+        return new TimeWindow(
+            startOfWeek,
+            startOfWeek.plusDays(7).minusSeconds(1)
+        );
+    }
+
+    private boolean checkDailyLoadCount(LoadRequest request, TimeWindow window) {
         long dailyLoadCount = loadRepository.countByCustomerIdAndLoadTimeBetween(
-                request.getCustomerId(), startOfDay, endOfDay);
+                request.getCustomerId(), window.start(), window.end());
         if (dailyLoadCount >= dailyLoadLimit) {
             dailyCountExceededCounter.increment();
             log.debug("Daily load count limit exceeded: customer={}, count={}", 
                 request.getCustomerId(), dailyLoadCount);
             return false;
         }
+        return true;
+    }
 
-        // Check daily amount
+    private boolean checkDailyAmountLimit(LoadRequest request, TimeWindow window) {
         BigDecimal dailyTotal = loadRepository.sumAmountByCustomerIdAndLoadTimeBetween(
-                request.getCustomerId(), startOfDay, endOfDay);
+                request.getCustomerId(), window.start(), window.end());
         dailyTotal = dailyTotal == null ? BigDecimal.ZERO : dailyTotal;
+        
         if (dailyTotal.add(request.getLoadAmountValue()).compareTo(dailyLimit) > 0) {
             dailyLimitExceededCounter.increment();
             log.debug("Daily amount limit exceeded: customer={}, current={}, attempted={}", 
                 request.getCustomerId(), dailyTotal, request.getLoadAmount());
             return false;
         }
+        return true;
+    }
 
-        // Check weekly amount
+    private boolean checkWeeklyAmountLimit(LoadRequest request, TimeWindow window) {
         BigDecimal weeklyTotal = loadRepository.sumAmountByCustomerIdAndLoadTimeBetween(
-                request.getCustomerId(), startOfWeek, endOfWeek);
+                request.getCustomerId(), window.start(), window.end());
         weeklyTotal = weeklyTotal == null ? BigDecimal.ZERO : weeklyTotal;
+        
         if (weeklyTotal.add(request.getLoadAmountValue()).compareTo(weeklyLimit) > 0) {
             weeklyLimitExceededCounter.increment();
             log.debug("Weekly amount limit exceeded: customer={}, current={}, attempted={}", 
                 request.getCustomerId(), weeklyTotal, request.getLoadAmount());
             return false;
         }
-
         return true;
     }
 

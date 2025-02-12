@@ -3,7 +3,6 @@ package com.velocity.limits.service;
 import com.velocity.limits.model.LoadRequest;
 import com.velocity.limits.model.LoadResponse;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -185,7 +184,6 @@ class LoadLimitServiceTest {
 
     @Test
     void shouldAcceptLoadAfterWeeklyReset() {
-        // Use small amount to avoid hitting amount limits
         BigDecimal amount = weeklyLoadLimit.multiply(new BigDecimal("0.25"));
         
         // Process 4 loads (weekly limit) for first week
@@ -212,7 +210,6 @@ class LoadLimitServiceTest {
 
     @Test
     void shouldIgnoreLoadsWithSameId() {
-        // Use 50% of daily limit
         BigDecimal amount = dailyLoadLimit.multiply(new BigDecimal("0.5"));
         
         LoadResponse response = loadLimitService.processLoad(createLoadRequest(
@@ -228,4 +225,32 @@ class LoadLimitServiceTest {
         assertNotNull(response);
         assertNull(response2);
     }
+
+    @Test
+    void shouldThrowExceptionWhenLoadRequestIsNull() {
+        assertThrows(IllegalArgumentException.class, () -> loadLimitService.processLoad(null));
+    }
+    
+    @Test
+    void shouldThrowExceptionWhenLoadRequestIdIsNull() {
+        assertThrows(IllegalArgumentException.class, () -> loadLimitService.processLoad(createLoadRequest(null, "1234", "$100.00", "2025-02-10T00:00:00Z")));
+    }
+
+    @Test
+    void shouldThrowExceptionWhenLoadRequestCustomerIdIsNull() {
+        assertThrows(IllegalArgumentException.class, () -> loadLimitService.processLoad(createLoadRequest("1234", null, "$100.00", "2025-02-10T00:00:00Z")));
+    }
+
+    @Test
+    void shouldThrowExceptionWhenLoadRequestAmountIsNull() {
+        assertThrows(IllegalArgumentException.class, () -> loadLimitService.processLoad(createLoadRequest("1234", "1234", null, "2025-02-10T00:00:00Z")));
+    }
+
+    @Test
+    void shouldThrowExceptionWhenLoadRequestAmountLessThanZero() {
+        assertThrows(IllegalArgumentException.class, () -> loadLimitService.processLoad(createLoadRequest("1234", "1234", "$-100.00", "2025-02-10T00:00:00Z")));
+    }
 }
+
+
+

@@ -21,6 +21,9 @@ public class LoadRequest {
     private ZonedDateTime time;
     
     public BigDecimal getLoadAmountValue() {
+        if (loadAmount == null) {
+            return null;
+        }
         return new BigDecimal(loadAmount.replace("$", ""));
     }
 } 

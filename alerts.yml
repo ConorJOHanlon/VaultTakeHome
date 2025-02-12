@@ -18,3 +18,5 @@ groups:
     annotations:
       summary: High load volume
       description: More than 100 requests per second for 5 minutes 
+
+  # Depending on usage, we can add more alerts for different scenarios
