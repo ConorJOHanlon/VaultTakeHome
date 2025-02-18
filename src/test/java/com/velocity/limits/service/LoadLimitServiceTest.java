@@ -226,6 +226,36 @@ class LoadLimitServiceTest {
         assertNull(response2);
     }
 
+    
+    @Test
+    void shouldIgnoreLoadsWithSameIdEvenIfFirstWasRejected() {
+        // Create a load request that will be rejected (exceeds daily limit)
+        BigDecimal largeAmount = dailyLoadLimit.multiply(new BigDecimal("1.5"));
+        LoadRequest request1 = createLoadRequest(
+            "duplicate-test-id",
+            "1234",
+            formatAmount(largeAmount),
+            "2025-02-10T00:00:00Z"
+        );
+
+        // First attempt should be rejected due to exceeding limit
+        LoadResponse response1 = loadLimitService.processLoad(request1);
+        assertFalse(response1.isAccepted());
+
+        // Create second request with same ID but smaller amount
+        BigDecimal smallAmount = dailyLoadLimit.multiply(new BigDecimal("0.5"));
+        LoadRequest request2 = createLoadRequest(
+            "duplicate-test-id", // Same ID as first request
+            "1234",
+            formatAmount(smallAmount),
+            "2025-02-10T00:00:00Z"
+        );
+
+        // Second attempt should be detected as duplicate and return null
+        LoadResponse response2 = loadLimitService.processLoad(request2);
+        assertNull(response2);
+    }
+
     @Test
     void shouldThrowExceptionWhenLoadRequestIsNull() {
         assertThrows(IllegalArgumentException.class, () -> loadLimitService.processLoad(null));

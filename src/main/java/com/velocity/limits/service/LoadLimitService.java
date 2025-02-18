@@ -112,10 +112,12 @@ public class LoadLimitService {
                 
                 if (accepted) {
                     loadAcceptedCounter.increment();
-                    saveLoad(request);
                 } else {
                     loadRejectedCounter.increment();
                 }
+
+                // Save all attempts, both accepted and rejected
+                saveLoad(request, accepted);
 
                 return LoadResponse.builder()
                         .id(request.getId())
@@ -239,16 +241,17 @@ public class LoadLimitService {
         return true;
     }
 
-    private void saveLoad(LoadRequest request) {
+    private void saveLoad(LoadRequest request, boolean accepted) {
         try {
             CustomerLoad load = new CustomerLoad();
             load.setLoadId(request.getId());
             load.setCustomerId(request.getCustomerId());
             load.setAmount(request.getLoadAmountValue());
             load.setLoadTime(request.getTime());
+            load.setAccepted(accepted);
             loadRepository.save(load);
-            log.debug("Load saved successfully: id={}, customer={}", 
-                request.getId(), request.getCustomerId());
+            log.debug("Load attempt saved: id={}, customer={}, accepted={}", 
+                request.getId(), request.getCustomerId(), accepted);
         } catch (Exception e) {
             log.error("Error saving load: id={}, customer={}", 
                 request.getId(), request.getCustomerId(), e);

@@ -17,4 +17,5 @@ public class CustomerLoad {
     private String customerId;
     private BigDecimal amount;
     private ZonedDateTime loadTime;
+    private boolean accepted;
 } 

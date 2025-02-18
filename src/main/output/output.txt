@@ -684,7 +684,6 @@
 {"id":"2245","customer_id":"494","accepted":false}
 {"id":"2845","customer_id":"1","accepted":true}
 {"id":"19081","customer_id":"664","accepted":false}
-{"id":"6928","customer_id":"562","accepted":true}
 {"id":"10235","customer_id":"69","accepted":true}
 {"id":"5648","customer_id":"766","accepted":true}
 {"id":"19348","customer_id":"52","accepted":true}

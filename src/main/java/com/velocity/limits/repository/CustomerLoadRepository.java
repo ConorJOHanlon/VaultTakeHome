@@ -10,9 +10,9 @@ import java.time.ZonedDateTime;
 public interface CustomerLoadRepository extends JpaRepository<CustomerLoad, Long> {
     boolean existsByLoadIdAndCustomerId(String loadId, String customerId);
     
-    @Query("SELECT SUM(c.amount) FROM CustomerLoad c WHERE c.customerId = ?1 AND c.loadTime >= ?2 AND c.loadTime <= ?3")
+    @Query("SELECT SUM(c.amount) FROM CustomerLoad c WHERE c.customerId = ?1 AND c.loadTime >= ?2 AND c.loadTime <= ?3 AND c.accepted = true" )
     BigDecimal sumAmountByCustomerIdAndLoadTimeBetween(String customerId, ZonedDateTime start, ZonedDateTime end);
     
-    @Query("SELECT COUNT(c) FROM CustomerLoad c WHERE c.customerId = ?1 AND c.loadTime >= ?2 AND c.loadTime <= ?3")
+    @Query("SELECT COUNT(c) FROM CustomerLoad c WHERE c.customerId = ?1 AND c.loadTime >= ?2 AND c.loadTime <= ?3 AND c.accepted = true")
     long countByCustomerIdAndLoadTimeBetween(String customerId, ZonedDateTime start, ZonedDateTime end);
 } 
